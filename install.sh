@@ -9,6 +9,7 @@ BRANCH="${1:-main}"
 if [[ "$BRANCH" != "main" && "$BRANCH" != "dev" ]]; then
     BRANCH="main"
 fi
+REPO_SLUG="${SECURECLAW_REPO:-mshaw32/secureclaw}"
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 RESET=$'\033[0m'
@@ -87,13 +88,23 @@ check_ubuntu() {
 }
 
 # ── Mode detection ────────────────────────────────────────────────────────────
-# Sets SETUP_MODE="vps" or "local".
+# Sets SETUP_MODE="vps", "local", or "proxmox_lxc".
 # Auto-detects via environment / filesystem, then confirms with the user.
 detect_mode() {
     SETUP_MODE="vps"  # safe default
 
+    if [[ "${SECURECLAW_SETUP_MODE:-}" == "proxmox_lxc" || "${SECURECLAW_PROFILE:-}" == "proxmox-ct" || "${SECURECLAW_PROFILE:-}" == "proxmox_lxc" ]]; then
+        SETUP_MODE="proxmox_lxc"
+    elif systemd-detect-virt --container 2>/dev/null | grep -qiE 'lxc|systemd-nspawn|container'; then
+        SETUP_MODE="proxmox_lxc"
+    elif [[ -f /run/systemd/container ]] && grep -qiE 'lxc|systemd-nspawn|container' /run/systemd/container; then
+        SETUP_MODE="proxmox_lxc"
+    fi
+
     # SSH_CLIENT / SSH_CONNECTION may survive sudo depending on sudoers config
-    if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_CONNECTION:-}" ]]; then
+    if [[ "$SETUP_MODE" == "proxmox_lxc" ]]; then
+        :
+    elif [[ -n "${SSH_CLIENT:-}" || -n "${SSH_CONNECTION:-}" ]]; then
         SETUP_MODE="vps"
     elif [[ -n "${XRDP_SESSION:-}" ]]; then
         # Already inside an xrdp session — treat as VPS continuation
@@ -119,9 +130,14 @@ detect_mode() {
     echo -e "       ${DIM}SSH or cloud provider — fresh headless server${RESET}"
     echo -e "  ${CYAN}  2.${RESET}  ${BOLD}Local Ubuntu desktop${RESET}"
     echo -e "       ${DIM}Physically present at this machine — Ubuntu Desktop installed${RESET}"
+    echo -e "  ${CYAN}  3.${RESET}  ${BOLD}Proxmox Ubuntu CT${RESET}"
+    echo -e "       ${DIM}LXC/container install — VPS flow with container preflight checks${RESET}"
     echo
 
-    if [[ "$SETUP_MODE" == "local" ]]; then
+    if [[ "$SETUP_MODE" == "proxmox_lxc" ]]; then
+        DEFAULT_CHOICE="3"
+        echo -e "  ${GREEN}Auto-detected: Proxmox VE CT / LXC${RESET}"
+    elif [[ "$SETUP_MODE" == "local" ]]; then
         DEFAULT_CHOICE="2"
         echo -e "  ${GREEN}Auto-detected: local desktop${RESET}"
     else
@@ -135,8 +151,16 @@ detect_mode() {
 
     case "$mode_choice" in
         2) SETUP_MODE="local" ;;
-        *) SETUP_MODE="vps"   ;;
+        3) SETUP_MODE="proxmox_lxc" ;;
+        *) SETUP_MODE="vps" ;;
     esac
+
+    export SECURECLAW_SETUP_MODE="$SETUP_MODE"
+    if [[ "$SETUP_MODE" == "proxmox_lxc" ]]; then
+        export SECURECLAW_PROFILE="proxmox_lxc"
+    else
+        unset SECURECLAW_PROFILE
+    fi
 }
 
 # ── Steps ─────────────────────────────────────────────────────────────────────
@@ -174,7 +198,7 @@ install_scripts() {
         fi
     else
         # Repo not available locally — download from GitHub
-        REPO_BASE="https://raw.githubusercontent.com/brandonbelew/secureclaw/${BRANCH}"
+        REPO_BASE="https://raw.githubusercontent.com/${REPO_SLUG}/${BRANCH}"
         if ! command -v curl &> /dev/null; then
             apt-get install -y -qq curl > /dev/null 2>&1
         fi
@@ -194,18 +218,22 @@ install_scripts() {
 create_shortcuts() {
     print_step 4 4 "Creating shortcuts...                    "
 
-    cat > /usr/local/bin/vps-setup << EOF
+cat > /usr/local/bin/vps-setup << EOF
 #!/bin/bash
-REPO_BASE="https://raw.githubusercontent.com/brandonbelew/secureclaw/${BRANCH}"
+REPO_BASE="https://raw.githubusercontent.com/${REPO_SLUG}/${BRANCH}"
+export SECURECLAW_SETUP_MODE="${SETUP_MODE}"
+export SECURECLAW_PROFILE="${SETUP_MODE}"
 curl -fsSL "\$REPO_BASE/ubuntu/universal_vps_setup.py?\$(date +%s)" -o /usr/local/bin/universal_vps_setup.py \
     && chmod +x /usr/local/bin/universal_vps_setup.py \
     || echo "  Warning: could not fetch latest script, running cached version"
 python3 /usr/local/bin/universal_vps_setup.py "\$@"
 EOF
 
-    cat > /usr/local/bin/vps-post-setup << EOF
+cat > /usr/local/bin/vps-post-setup << EOF
 #!/bin/bash
-REPO_BASE="https://raw.githubusercontent.com/brandonbelew/secureclaw/${BRANCH}"
+REPO_BASE="https://raw.githubusercontent.com/${REPO_SLUG}/${BRANCH}"
+export SECURECLAW_SETUP_MODE="${SETUP_MODE}"
+export SECURECLAW_PROFILE="${SETUP_MODE}"
 if curl -fsSL "\$REPO_BASE/ubuntu/post_lockdown_setup.py?\$(date +%s)" -o /usr/local/bin/post_lockdown_setup.py; then
     chmod +x /usr/local/bin/post_lockdown_setup.py
     sed -i 's/^REPO_BRANCH_OVERRIDE = None.*\$/REPO_BRANCH_OVERRIDE = "${BRANCH}"/' /usr/local/bin/post_lockdown_setup.py
@@ -217,7 +245,7 @@ EOF
 
     cat > /usr/local/bin/local-setup << EOF
 #!/bin/bash
-REPO_BASE="https://raw.githubusercontent.com/brandonbelew/secureclaw/${BRANCH}"
+REPO_BASE="https://raw.githubusercontent.com/${REPO_SLUG}/${BRANCH}"
 if curl -fsSL "\$REPO_BASE/ubuntu/local_setup.py?\$(date +%s)" -o /usr/local/bin/local_setup.py; then
     chmod +x /usr/local/bin/local_setup.py
 else
@@ -230,12 +258,17 @@ EOF
     chmod +x /usr/local/bin/vps-setup
     chmod +x /usr/local/bin/vps-post-setup
     chmod +x /usr/local/bin/local-setup
+    if [[ "$SETUP_MODE" == "proxmox_lxc" ]]; then
+        ln -sf /usr/local/bin/vps-setup /usr/local/bin/proxmox-lxc-setup
+    fi
     print_ok
 }
 
 show_complete() {
     if [[ "$SETUP_MODE" == "local" ]]; then
         show_complete_local
+    elif [[ "$SETUP_MODE" == "proxmox_lxc" ]]; then
+        show_complete_proxmox_ct
     else
         show_complete_vps
     fi
@@ -264,6 +297,31 @@ show_complete_vps() {
     echo -e "       ${DIM}(a link will appear — open it in your browser)${RESET}"
     echo -e "  ${CYAN}  4.${RESET}  After lockdown, SSH will drop — reconnect via Tailscale"
     echo -e "  ${CYAN}  5.${RESET}  Run ${YELLOW}sudo vps-post-setup${RESET} to finish the installation"
+    echo
+    print_divider
+    echo
+}
+
+show_complete_proxmox_ct() {
+    echo
+    print_divider
+    echo
+    echo -e "  ${GREEN}${BOLD}  Installation complete!${RESET}"
+    echo
+    echo -e "  This installer will set up your Proxmox Ubuntu CT with:"
+    echo -e "  ${GREEN}  ✓${RESET}  Container readiness checks for systemd, Tailscale, and firewall support"
+    echo -e "  ${GREEN}  ✓${RESET}  Remote Desktop (RDP) access"
+    echo -e "  ${GREEN}  ✓${RESET}  Tailscale VPN — secure remote access from anywhere"
+    echo -e "  ${GREEN}  ✓${RESET}  OpenClaw AI assistant — running as a user service"
+    echo -e "  ${GREEN}  ✓${RESET}  Google Chrome browser"
+    echo
+    print_divider
+    echo
+    echo -e "  ${BOLD}Before the wizard changes the container:${RESET}"
+    echo
+    echo -e "  ${CYAN}  1.${RESET}  It will verify container-side requirements"
+    echo -e "  ${CYAN}  2.${RESET}  If host-side Proxmox settings are missing, it will tell you what to enable"
+    echo -e "  ${CYAN}  3.${RESET}  After lockdown, reconnect via Tailscale and run ${YELLOW}sudo vps-post-setup${RESET}"
     echo
     print_divider
     echo
