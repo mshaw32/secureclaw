@@ -20,6 +20,7 @@ import threading
 import secrets
 import string
 import re
+import shlex
 
 STATE_FILE = "/var/lib/vps-setup/state.json"
 
@@ -53,6 +54,16 @@ class UniversalVPSSetup:
     def __init__(self):
         self.setup_log = []
         self.os_info = self._detect_os_info()
+        self.setup_mode = os.environ.get("SECURECLAW_SETUP_MODE", "").strip().lower()
+        self.setup_profile = os.environ.get("SECURECLAW_PROFILE", "").strip().lower()
+        self.container_kind = self.detect_container_environment()
+        self.is_container = bool(self.container_kind)
+        self.is_proxmox_lxc = (
+            self.setup_mode == "proxmox_lxc"
+            or self.setup_profile in ("proxmox-ct", "proxmox_lxc")
+            or self.container_kind == "lxc"
+        )
+        self.is_proxmox_ct = self.is_proxmox_lxc
         self.is_desktop_env = self.detect_desktop_environment()
         self.gui_available = self.is_desktop_env and self.check_display()
         self.initial_access_method = self.detect_access_method()
@@ -117,6 +128,117 @@ class UniversalVPSSetup:
         """Run a systemctl action against the first matching service name"""
         service = self.find_service(*candidates)
         self.run_command(f"systemctl {action} {service}")
+
+    def run_as_user(self, username, command, check=True, capture_output=True):
+        """Run a shell command as a regular user without invoking a login shell."""
+        if username == "root":
+            return self.run_command(f"bash -lc {shlex.quote(command)}", check=check, capture_output=capture_output)
+
+        try:
+            home = pwd.getpwnam(username).pw_dir
+        except KeyError:
+            home = f"/home/{username}"
+
+        user_q = shlex.quote(username)
+        home_q = shlex.quote(home)
+        command_q = shlex.quote(command)
+        return self.run_command(
+            f"sudo -H -u {user_q} env HOME={home_q} USER={user_q} LOGNAME={user_q} bash -lc {command_q}",
+            check=check,
+            capture_output=capture_output
+        )
+
+    def detect_container_environment(self):
+        """Return the container type when the script appears to be running inside one."""
+        if Path("/run/systemd/container").exists():
+            try:
+                return Path("/run/systemd/container").read_text().strip() or "container"
+            except Exception:
+                return "container"
+        try:
+            result = subprocess.run(
+                ["systemd-detect-virt", "--container"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return result.stdout.strip() or "container"
+        except FileNotFoundError:
+            return ""
+        return ""
+
+    def run_proxmox_ct_preflight(self):
+        """Validate requirements that commonly trip up Ubuntu LXC/Proxmox CTs."""
+        if self._step_done("proxmox_lxc_preflight") or self._step_done("proxmox_ct_preflight"):
+            self.log("Proxmox CT preflight already completed — skipping", "SUCCESS")
+            return
+
+        print(f"\n{Colors.HEADER}=== PROXMOX UBUNTU CT PREFLIGHT ==={Colors.ENDC}")
+        print(f"""
+{Colors.CYAN}SecureClaw can run inside an Ubuntu CT, but a few capabilities are
+controlled by the Proxmox host. This check catches the common blockers
+before package installation starts.{Colors.ENDC}
+""")
+
+        blockers = []
+        warnings = []
+
+        if not Path("/run/systemd/system").exists():
+            blockers.append("systemd is not PID 1. Create the CT from a systemd-enabled Ubuntu template.")
+        else:
+            result = subprocess.run(["systemctl", "is-system-running"], capture_output=True, text=True)
+            state = result.stdout.strip() or result.stderr.strip()
+            if result.returncode not in (0, 1):
+                warnings.append(f"systemd state is '{state or 'unknown'}'; services may need a CT reboot.")
+
+        if not Path("/dev/net/tun").exists():
+            blockers.append(
+                "/dev/net/tun is missing. On the Proxmox host, enable TUN for the CT "
+                "(for example: pct set <CTID> -features nesting=1,keyctl=1 and add a tun device if needed)."
+            )
+
+        try:
+            result = subprocess.run(["iptables", "-L"], capture_output=True, text=True)
+            if result.returncode != 0:
+                warnings.append(
+                    "iptables/UFW access is limited in this CT. Firewall lockdown may need the Proxmox host firewall."
+                )
+        except FileNotFoundError:
+            pass
+
+        try:
+            with open("/proc/sys/kernel/unprivileged_userns_clone") as f:
+                if f.read().strip() == "0":
+                    warnings.append(
+                        "kernel.unprivileged_userns_clone is disabled; Chrome/OpenClaw browser sandboxing may fail."
+                    )
+        except FileNotFoundError:
+            pass
+
+        if blockers:
+            print(f"{Colors.FAIL}{Colors.BOLD}Blocking CT requirements:{Colors.ENDC}")
+            for item in blockers:
+                print(f"  {Colors.FAIL}✗{Colors.ENDC} {item}")
+            print()
+            self.log("Proxmox LXC preflight failed; fix the host-side CT settings and re-run setup", "ERROR")
+            sys.exit(1)
+
+        if warnings:
+            print(f"{Colors.WARNING}{Colors.BOLD}CT warnings:{Colors.ENDC}")
+            for item in warnings:
+                print(f"  {Colors.WARNING}⚠{Colors.ENDC} {item}")
+            print()
+            response = self.get_user_input(
+                "Continue with these CT warnings?",
+                ["Continue setup", "Exit setup"],
+                default_index=0
+            )
+            if response == 1:
+                self.log("Setup stopped after Proxmox CT warnings", "WARNING")
+                sys.exit(0)
+
+        self.log("Proxmox LXC preflight completed", "SUCCESS")
+        self._save_state(proxmox_lxc_preflight=True, proxmox_ct_preflight=True)
 
     # ── Environment detection ─────────────────────────────────────────────────
 
@@ -244,6 +366,9 @@ class UniversalVPSSetup:
         print(f"{Colors.CYAN}Detected Environment:{Colors.ENDC}")
         print(f"  • OS: {Colors.BOLD}{os_name}{Colors.ENDC}")
         print(f"  • Access Method: {Colors.BOLD}{self.initial_access_method}{Colors.ENDC}")
+        print(f"  • Container: {Colors.BOLD}{'Yes' if self.is_container else 'No'}{Colors.ENDC}")
+        if self.is_proxmox_lxc:
+            print(f"  • Setup Mode: {Colors.BOLD}Proxmox VE CT / LXC{Colors.ENDC}")
         print(f"  • Desktop Environment: {Colors.BOLD}{'Yes' if self.is_desktop_env else 'No'}{Colors.ENDC}")
         print(f"  • GUI Available: {Colors.BOLD}{'Yes' if self.gui_available else 'No'}{Colors.ENDC}")
 
@@ -460,7 +585,13 @@ class UniversalVPSSetup:
 
         self.run_command("apt update", capture_output=False)
         self.run_command("apt upgrade -y", capture_output=False)
-        self.run_command("apt install -y curl wget gnupg2 software-properties-common python3-tk")
+        base_packages = (
+            "curl wget gnupg2 software-properties-common python3-tk "
+            "sudo ca-certificates openssh-server ufw"
+        )
+        if self.is_proxmox_lxc:
+            base_packages += " dbus-x11 iproute2 iptables fuse3 procps"
+        self.run_command(f"apt install -y {base_packages}")
 
         self.log("System update completed", "SUCCESS")
         self._save_state(system_updated=True)
@@ -863,6 +994,8 @@ lock-enabled=false
         result = self.run_command("which tailscale", check=False)
         if result.returncode == 0:
             self.log("Tailscale binary already present — skipping install", "SUCCESS")
+            self.service_command("enable", "tailscaled")
+            self.service_command("start", "tailscaled")
             self._save_state(tailscale_installed=True)
             return
 
@@ -874,6 +1007,8 @@ lock-enabled=false
         self.run_command(f'curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/{codename}.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list')
         self.run_command("apt update")
         self.run_command("apt install -y tailscale")
+        self.service_command("enable", "tailscaled")
+        self.service_command("start", "tailscaled")
 
         self.log("Tailscale installed successfully", "SUCCESS")
         self._save_state(tailscale_installed=True)
@@ -943,7 +1078,8 @@ lock-enabled=false
             return False
 
         try:
-            self.run_command("tailscale up", capture_output=False)
+            tailscale_up = "tailscale up --accept-dns=false" if self.is_proxmox_lxc else "tailscale up"
+            self.run_command(tailscale_up, capture_output=False)
         except subprocess.CalledProcessError:
             self.log("Tailscale authentication may have failed", "WARNING")
             retry = self.get_user_input(
@@ -953,7 +1089,8 @@ lock-enabled=false
             )
 
             if retry == 0:
-                self.run_command("tailscale up --reset", capture_output=False)
+                tailscale_reset = "tailscale up --reset --accept-dns=false" if self.is_proxmox_lxc else "tailscale up --reset"
+                self.run_command(tailscale_reset, capture_output=False)
             elif retry == 1:
                 return False
             else:
@@ -1260,16 +1397,30 @@ TAILSCALE TROUBLESHOOTING:
         print(f"\n  {Colors.WARNING}{Colors.BOLD}⚠  Note:{Colors.ENDC}{Colors.WARNING} This step can take 2–3 minutes and may appear to hang.{Colors.ENDC}")
         print(f"  {Colors.WARNING}   If progress stops, press Enter a few times to continue.{Colors.ENDC}\n")
         self.run_command("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -")
-        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3")
+        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3 sudo")
 
-        # Run the official OpenClaw installer as the target user.
-        # Node.js is already present so the installer skips the sudo step.
+        # Download as root, then run as the target user. This avoids a nested
+        # su/curl/pipe flow, which is brittle in minimal LXC shells.
         self.log("Running official OpenClaw installer...")
-        self.run_command(
-            f"su - {install_user} -c "
-            f"'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'",
+        self.run_command("curl -fsSL https://openclaw.ai/install.sh -o /tmp/openclaw_install.sh")
+        self.run_command("chmod 755 /tmp/openclaw_install.sh")
+        self.run_as_user(
+            install_user,
+            "bash /tmp/openclaw_install.sh --no-onboard",
             capture_output=False
         )
+        if install_user != "root":
+            try:
+                install_home = pwd.getpwnam(install_user).pw_dir
+            except KeyError:
+                install_home = f"/home/{install_user}"
+            user_q = shlex.quote(install_user)
+            home_q = shlex.quote(install_home)
+            self.run_command(
+                f"chown -R {user_q}:{user_q} {home_q}/.openclaw {home_q}/.npm 2>/dev/null",
+                check=False
+            )
+        self.run_command("rm -f /tmp/openclaw_install.sh", check=False)
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session
@@ -1287,9 +1438,7 @@ TAILSCALE TROUBLESHOOTING:
         install_user = self.rdp_username or "root"
 
         # Check if already present for this user
-        result = self.run_command(
-            f"su - {install_user} -c 'command -v brew'", check=False
-        )
+        result = self.run_as_user(install_user, "command -v brew", check=False)
         if result.returncode == 0:
             self.log("Homebrew already present — skipping", "SUCCESS")
             self._save_state(homebrew_installed=True)
@@ -1309,10 +1458,7 @@ TAILSCALE TROUBLESHOOTING:
             "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh "
             "-o /tmp/brew_install.sh"
         )
-        self.run_command(
-            f"su - {install_user} -c 'NONINTERACTIVE=1 bash /tmp/brew_install.sh'",
-            capture_output=False
-        )
+        self.run_as_user(install_user, "NONINTERACTIVE=1 bash /tmp/brew_install.sh", capture_output=False)
         self.run_command("rm -f /tmp/brew_install.sh", check=False)
 
         # Add brew to the user's shell profile so it's on PATH after login
@@ -1911,6 +2057,9 @@ WantedBy=timers.target
                 sys.exit(0)
 
             self.check_root()
+            os.environ.setdefault("DEBIAN_FRONTEND", "noninteractive")
+            if self.is_proxmox_ct:
+                self.run_proxmox_ct_preflight()
             self.update_system()
             self.detect_and_setup_desktop()
             self.create_rdp_user()
