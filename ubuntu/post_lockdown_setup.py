@@ -10,7 +10,6 @@ import sys
 import subprocess
 import time
 import pwd
-import shlex
 from pathlib import Path
 
 # Injected at install time by vps-post-setup shortcut via sed.
@@ -78,25 +77,6 @@ class PostLockdownSetup:
             if capture_output and e.stderr:
                 self.log(f"Error output: {e.stderr.strip()}", "ERROR")
             raise
-
-    def run_as_user(self, username, command, check=True, capture_output=True):
-        """Run a shell command as a regular user without invoking a login shell."""
-        if username == "root":
-            return self.run_command(f"bash -lc {shlex.quote(command)}", check=check, capture_output=capture_output)
-
-        try:
-            home = pwd.getpwnam(username).pw_dir
-        except KeyError:
-            home = f"/home/{username}"
-
-        user_q = shlex.quote(username)
-        home_q = shlex.quote(home)
-        command_q = shlex.quote(command)
-        return self.run_command(
-            f"sudo -H -u {user_q} env HOME={home_q} USER={user_q} LOGNAME={user_q} bash -lc {command_q}",
-            check=check,
-            capture_output=capture_output
-        )
 
     def verify_tailscale_connection(self):
         """Verify we're connected via Tailscale"""
@@ -250,26 +230,16 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
         print(f"\n  {Colors.WARNING}{Colors.BOLD}⚠  Note:{Colors.ENDC}{Colors.WARNING} This step can take 2–3 minutes and may appear to hang.{Colors.ENDC}")
         print(f"  {Colors.WARNING}   If progress stops, press Enter a few times to continue.{Colors.ENDC}\n")
         self.run_command("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -")
-        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3 sudo")
+        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3")
 
-        # Download as root, then run as the target user. This avoids a nested
-        # su/curl/pipe flow, which is brittle in minimal LXC shells.
+        # Run the official OpenClaw installer as the target user.
+        # Node.js is already present so the installer skips the sudo step.
         self.log("Running official OpenClaw installer...")
-        self.run_command("curl -fsSL https://openclaw.ai/install.sh -o /tmp/openclaw_install.sh")
-        self.run_command("chmod 755 /tmp/openclaw_install.sh")
-        self.run_as_user(install_user, "bash /tmp/openclaw_install.sh --no-onboard", capture_output=False)
-        if install_user != "root":
-            try:
-                install_home = pwd.getpwnam(install_user).pw_dir
-            except KeyError:
-                install_home = f"/home/{install_user}"
-            user_q = shlex.quote(install_user)
-            home_q = shlex.quote(install_home)
-            self.run_command(
-                f"chown -R {user_q}:{user_q} {home_q}/.openclaw {home_q}/.npm 2>/dev/null",
-                check=False
-            )
-        self.run_command("rm -f /tmp/openclaw_install.sh", check=False)
+        self.run_command(
+            f"su - {install_user} -c "
+            f"'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'",
+            capture_output=False
+        )
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session
@@ -285,7 +255,9 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
             return
 
         # Check if already present for this user
-        result = self.run_as_user(install_user, "command -v brew", check=False)
+        result = self.run_command(
+            f"su - {install_user} -c 'command -v brew'", check=False
+        )
         if result.returncode == 0:
             self.log("Homebrew already present — skipping", "SUCCESS")
             return
@@ -304,7 +276,10 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
             "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh "
             "-o /tmp/brew_install.sh"
         )
-        self.run_as_user(install_user, "NONINTERACTIVE=1 bash /tmp/brew_install.sh", capture_output=False)
+        self.run_command(
+            f"su - {install_user} -c 'NONINTERACTIVE=1 bash /tmp/brew_install.sh'",
+            capture_output=False
+        )
         self.run_command("rm -f /tmp/brew_install.sh", check=False)
 
         # Add brew to the user's shell profile so it's on PATH after login
