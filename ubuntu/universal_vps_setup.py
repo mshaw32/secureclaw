@@ -129,12 +129,6 @@ class UniversalVPSSetup:
         service = self.find_service(*candidates)
         self.run_command(f"systemctl {action} {service}")
 
-    def setup_label(self):
-        """Human-readable setup target for prompts and reports."""
-        if self.is_proxmox_lxc:
-            return "Proxmox VE CT / LXC"
-        return "VPS"
-
     def run_as_user(self, username, command, check=True, capture_output=True):
         """Run a shell command as a regular user without invoking a login shell."""
         if username == "root":
@@ -361,7 +355,7 @@ before package installation starts.{Colors.ENDC}
         """Display appropriate startup message based on access method"""
         print(f"{Colors.HEADER}{Colors.BOLD}")
         print("=" * 70)
-        print(f"        Universal Ubuntu {self.setup_label()} Interactive Setup")
+        print("        Universal Ubuntu VPS Interactive Setup")
         print("=" * 70)
         print(f"{Colors.ENDC}")
 
@@ -394,8 +388,8 @@ before package installation starts.{Colors.ENDC}
                     root = tk.Tk()
                     root.withdraw()
                     result = messagebox.askyesno(
-                        f"{self.setup_label()} Setup",
-                        f"Welcome to Ubuntu {self.setup_label()} Setup!\n\n"
+                        "VPS Setup",
+                        "Welcome to Ubuntu VPS Setup!\n\n"
                         "Detected: You're connected via RDP\n\n"
                         "This script will:\n"
                         "• Enhance RDP with session persistence\n"
@@ -2053,7 +2047,7 @@ WantedBy=timers.target
                 return
 
             response = self.get_user_input(
-                f"Ready to begin {self.setup_label()} setup?",
+                "Ready to begin VPS setup?",
                 ["Start setup", "Exit"],
                 default_index=0
             )
