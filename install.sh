@@ -4,9 +4,10 @@
 
 set -e
 
-# Branch is passed as $1 (e.g. "dev"). Defaults to "main".
+# Branch is passed as $1 and defaults to "main".
+# Allow feature branches so VPS/local shortcuts can be tested before merge.
 BRANCH="${1:-main}"
-if [[ "$BRANCH" != "main" && "$BRANCH" != "dev" ]]; then
+if [[ ! "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
     BRANCH="main"
 fi
 
