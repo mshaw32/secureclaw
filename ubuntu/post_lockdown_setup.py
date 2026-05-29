@@ -230,7 +230,12 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
         print(f"\n  {Colors.WARNING}{Colors.BOLD}⚠  Note:{Colors.ENDC}{Colors.WARNING} This step can take 2–3 minutes and may appear to hang.{Colors.ENDC}")
         print(f"  {Colors.WARNING}   If progress stops, press Enter a few times to continue.{Colors.ENDC}\n")
         self.run_command("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -")
-        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3")
+        self.run_command(
+            "apt-get install -y "
+            "git curl wget sudo "
+            "nodejs build-essential cmake make g++ python3 "
+            "ca-certificates"
+        )
 
         # Run the official OpenClaw installer as the target user.
         # Node.js is already present so the installer skips the sudo step.
