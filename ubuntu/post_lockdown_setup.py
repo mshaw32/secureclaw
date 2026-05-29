@@ -10,6 +10,8 @@ import sys
 import subprocess
 import time
 import pwd
+import shlex
+import shutil
 from pathlib import Path
 
 # Injected at install time by vps-post-setup shortcut via sed.
@@ -77,6 +79,15 @@ class PostLockdownSetup:
             if capture_output and e.stderr:
                 self.log(f"Error output: {e.stderr.strip()}", "ERROR")
             raise
+
+    def run_as_login_user(self, username, command, check=True, capture_output=True):
+        quoted_user = shlex.quote(username)
+        quoted_command = shlex.quote(command)
+        if shutil.which("runuser"):
+            wrapper = f"runuser -l {quoted_user} -c {quoted_command}"
+        else:
+            wrapper = f"su - {quoted_user} -c {quoted_command}"
+        return self.run_command(wrapper, check=check, capture_output=capture_output)
 
     def verify_tailscale_connection(self):
         """Verify we're connected via Tailscale"""
@@ -237,14 +248,24 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
             "ca-certificates"
         )
 
-        # Run the official OpenClaw installer as the target user.
-        # Node.js is already present so the installer skips the sudo step.
+        # Download once as root, then run under the target user's login shell
+        # with an explicit PATH so LXC/container environments don't hide tools.
         self.log("Running official OpenClaw installer...")
-        self.run_command(
-            f"su - {install_user} -c "
-            f"'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'",
-            capture_output=False
-        )
+        installer_path = "/tmp/openclaw_install.sh"
+        self.run_command(f"curl -fsSL https://openclaw.ai/install.sh -o {installer_path}")
+        self.run_command(f"chmod 755 {installer_path}")
+        try:
+            self.run_as_login_user(
+                install_user,
+                "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                "for cmd in git curl sudo node npm bash; do "
+                "command -v \"$cmd\" >/dev/null || { echo \"Missing dependency in user PATH: $cmd\" >&2; exit 1; }; "
+                "done; "
+                f"bash {installer_path} --no-onboard",
+                capture_output=False,
+            )
+        finally:
+            self.run_command(f"rm -f {installer_path}", check=False)
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session
