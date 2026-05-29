@@ -89,6 +89,15 @@ class PostLockdownSetup:
             wrapper = f"su - {quoted_user} -c {quoted_command}"
         return self.run_command(wrapper, check=check, capture_output=capture_output)
 
+    def get_openclaw_service_status(self, username):
+        result = self.run_as_login_user(
+            username,
+            "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+            "systemctl --user is-active openclaw-gateway",
+            check=False,
+        )
+        return result.stdout.strip()
+
     def verify_tailscale_connection(self):
         """Verify we're connected via Tailscale"""
         print(f"\n{Colors.HEADER}=== VERIFYING TAILSCALE CONNECTION ==={Colors.ENDC}")
@@ -262,6 +271,12 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
                 "command -v \"$cmd\" >/dev/null || { echo \"Missing dependency in user PATH: $cmd\" >&2; exit 1; }; "
                 "done; "
                 f"bash {installer_path} --no-onboard",
+                capture_output=False,
+            )
+            self.run_as_login_user(
+                install_user,
+                "export PATH=/home/{user}/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                "openclaw gateway install".format(user=install_user),
                 capture_output=False,
             )
         finally:
@@ -475,8 +490,16 @@ fi
 
 # ── OpenClaw ──────────────────────────────────────────────────────────────────
 section "OpenClaw"
-if systemctl is-active --quiet openclaw; then
-    pass "OpenClaw service is running"
+oc_user=""
+while IFS=: read -r user _ uid _ _ home _; do
+    if [ "$uid" -ge 1000 ] && [[ "$home" == /home/* ]] && \
+       runuser -l "$user" -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active --quiet openclaw-gateway' 2>/dev/null; then
+        oc_user="$user"
+        break
+    fi
+done < /etc/passwd
+if [ -n "$oc_user" ]; then
+    pass "OpenClaw gateway service is running for $oc_user"
     oc_ports=$(ss -tlnp 2>/dev/null | grep -i openclaw | awk '{print $4}' | sed 's/.*://' | sort -u)
     if [ -n "$oc_ports" ]; then
         for port in $oc_ports; do
@@ -490,7 +513,7 @@ if systemctl is-active --quiet openclaw; then
         info "OpenClaw does not expose a network port"
     fi
 else
-    warn "OpenClaw service is not running"; RESTART_SVCS+=("openclaw")
+    warn "OpenClaw gateway service is not running"
 fi
 
 # ── Services ──────────────────────────────────────────────────────────────────
@@ -885,9 +908,12 @@ WantedBy=timers.target
         except:
             chrome_version = "Installation failed"
         
+        install_user = self.get_install_user()
         try:
-            openclaw_result = self.run_command("systemctl is-active openclaw", check=False)
-            openclaw_status = "Running" if openclaw_result.stdout.strip() == "active" else "Installed (service not active)"
+            if install_user and self.get_openclaw_service_status(install_user) == "active":
+                openclaw_status = "Running"
+            else:
+                openclaw_status = "Installed (service not active)"
         except:
             openclaw_status = "Installation failed"
         

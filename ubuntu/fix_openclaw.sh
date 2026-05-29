@@ -25,6 +25,10 @@ run_as_login_user() {
         su - "$username" -c "$command"
     fi
 }
+gateway_status() {
+    local username="$1"
+    run_as_login_user "$username" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active openclaw-gateway'
+}
 
 if [[ $EUID -ne 0 ]]; then
     die "This script must be run as root. Use: sudo bash fix_openclaw.sh"
@@ -102,6 +106,9 @@ run_as_login_user "$TARGET_USER" \
         command -v "$cmd" >/dev/null || { echo "Missing dependency in user PATH: $cmd" >&2; exit 1; }; \
     done; \
     bash /tmp/openclaw_install.sh --no-onboard'
+run_as_login_user "$TARGET_USER" \
+    "export PATH=/home/$TARGET_USER/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
+    openclaw gateway install"
 rm -f /tmp/openclaw_install.sh
 echo
 ok "OpenClaw installed"
@@ -110,6 +117,11 @@ ok "OpenClaw installed"
 info "Enabling linger for ${TARGET_USER} (service starts at boot)..."
 loginctl enable-linger "$TARGET_USER"
 ok "Linger enabled"
+if gateway_status "$TARGET_USER" >/dev/null 2>&1; then
+    ok "OpenClaw gateway service is active"
+else
+    warn "OpenClaw gateway service is installed but not active yet"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo

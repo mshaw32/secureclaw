@@ -128,6 +128,15 @@ class LocalUbuntuSetup:
             wrapper = f"su - {quoted_user} -c {quoted_command}"
         return self.run_command(wrapper, check=check, capture_output=capture_output)
 
+    def get_openclaw_service_status(self, username):
+        result = self.run_as_login_user(
+            username,
+            "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+            "systemctl --user is-active openclaw-gateway",
+            check=False,
+        )
+        return result.stdout.strip()
+
     def get_user_input(self, message, options, default_index=0):
         print(f"\n{Colors.CYAN}{message}{Colors.ENDC}")
         for i, option in enumerate(options):
@@ -679,6 +688,12 @@ only affects incoming network connections.{Colors.ENDC}
                 f"bash {installer_path} --no-onboard",
                 capture_output=False,
             )
+            self.run_as_login_user(
+                self.install_user,
+                "export PATH=/home/{user}/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                "openclaw gateway install".format(user=self.install_user),
+                capture_output=False,
+            )
         finally:
             self.run_command(f"rm -f {installer_path}", check=False)
 
@@ -953,10 +968,18 @@ else
 fi
 
 section "OpenClaw"
-if systemctl is-active --quiet openclaw; then
-    pass "OpenClaw service is running"
+oc_user=""
+while IFS=: read -r user _ uid _ _ home _; do
+    if [ "$uid" -ge 1000 ] && [[ "$home" == /home/* ]] && \
+       runuser -l "$user" -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active --quiet openclaw-gateway' 2>/dev/null; then
+        oc_user="$user"
+        break
+    fi
+done < /etc/passwd
+if [ -n "$oc_user" ]; then
+    pass "OpenClaw gateway service is running for $oc_user"
 else
-    warn "OpenClaw service is not running"; RESTART_SVCS+=("openclaw")
+    warn "OpenClaw gateway service is not running"
 fi
 
 section "Services"
@@ -1256,8 +1279,10 @@ Categories=System;Security;
             chrome_ver = "Installation failed"
 
         try:
-            r = self.run_command("systemctl is-active openclaw", check=False)
-            oc_status = "Running" if r.stdout.strip() == "active" else "Installed (service not active)"
+            if self.install_user and self.get_openclaw_service_status(self.install_user) == "active":
+                oc_status = "Running"
+            else:
+                oc_status = "Installed (service not active)"
         except Exception:
             oc_status = "Unknown"
 
