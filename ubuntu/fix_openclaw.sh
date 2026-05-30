@@ -16,6 +16,19 @@ ok()   { echo -e "  ${GREEN}✓${RESET}  $1"; }
 info() { echo -e "  ${CYAN}ℹ${RESET}  $1"; }
 warn() { echo -e "  ${YELLOW}⚠${RESET}  $1"; }
 die()  { echo -e "  ${RED}${BOLD}✗ Error:${RESET} $1"; exit 1; }
+run_as_login_user() {
+    local username="$1"
+    local command="$2"
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -l "$username" -c "$command"
+    else
+        su - "$username" -c "$command"
+    fi
+}
+gateway_status() {
+    local username="$1"
+    run_as_login_user "$username" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active openclaw-gateway'
+}
 
 if [[ $EUID -ne 0 ]]; then
     die "This script must be run as root. Use: sudo bash fix_openclaw.sh"
@@ -68,21 +81,35 @@ pkill -u "$TARGET_USER" -f openclaw-gateway 2>/dev/null || true
 sleep 1
 ok "Stale processes cleared"
 
-# ── Step 3: Ensure Node.js is present (installer needs it, can't sudo without TTY) ──
-info "Ensuring Node.js is installed..."
+# ── Step 3: Ensure system deps are present (installer can't sudo without TTY) ──
+info "Ensuring Node.js and installer dependencies are installed..."
 if ! command -v node &>/dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs build-essential cmake make g++ python3
-    ok "Node.js installed"
+    ok "NodeSource repository configured"
 else
     ok "Node.js already present ($(node --version))"
 fi
+apt-get install -y \
+    git curl wget sudo \
+    nodejs build-essential cmake make g++ python3 \
+    ca-certificates
+ok "Installer dependencies verified"
 
 # ── Step 4: Re-install via official installer ─────────────────────────────────
 info "Running official OpenClaw installer as ${TARGET_USER}..."
 echo
-su - "$TARGET_USER" -c \
-    'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'
+curl -fsSL https://openclaw.ai/install.sh -o /tmp/openclaw_install.sh
+chmod 755 /tmp/openclaw_install.sh
+run_as_login_user "$TARGET_USER" \
+    'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
+    for cmd in git curl sudo node npm bash; do \
+        command -v "$cmd" >/dev/null || { echo "Missing dependency in user PATH: $cmd" >&2; exit 1; }; \
+    done; \
+    bash /tmp/openclaw_install.sh --no-onboard'
+run_as_login_user "$TARGET_USER" \
+    "export PATH=/home/$TARGET_USER/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
+    openclaw gateway install"
+rm -f /tmp/openclaw_install.sh
 echo
 ok "OpenClaw installed"
 
@@ -90,6 +117,11 @@ ok "OpenClaw installed"
 info "Enabling linger for ${TARGET_USER} (service starts at boot)..."
 loginctl enable-linger "$TARGET_USER"
 ok "Linger enabled"
+if gateway_status "$TARGET_USER" >/dev/null 2>&1; then
+    ok "OpenClaw gateway service is active"
+else
+    warn "OpenClaw gateway service is installed but not active yet"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo
