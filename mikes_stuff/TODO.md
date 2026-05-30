@@ -4,7 +4,7 @@
 
 - Run a fresh end-to-end deployment test on a brand new Ubuntu CT using the GitHub `dev` branch flow.
 - Confirm that `install.sh`, `vps-setup`, and `vps-post-setup` all pull the expected updated code from GitHub.
-- Verify final report on fresh CT shows `OpenClaw: Running`.
+- Verify final report on fresh CT shows `OpenClaw: Installed`.
 - Verify no onboarding is triggered automatically anywhere in the setup flow.
 
 ## Deployment Follow-Up
@@ -22,7 +22,7 @@
 ## Nice To Have
 
 - Add a lightweight diagnostic mode or extra logging around OpenClaw setup so future failures are easier to root-cause quickly.
-- Consider documenting the expected OpenClaw gateway service behavior in comments near the install logic.
+- Consider documenting that OpenClaw gateway setup is intentionally deferred to `openclaw onboard`.
 - Consider whether the security-check scripts should report service warm-up separately from service failure.
 
 ## Ideas / Recommendations

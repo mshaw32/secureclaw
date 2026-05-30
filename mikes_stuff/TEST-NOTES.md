@@ -54,14 +54,13 @@ That is okay on `main` because default branch is `main`.
 4. Run `sudo vps-post-setup`.
 5. At hostname prompt, pressing Enter should keep current hostname.
 6. Script should complete OpenClaw install without onboarding.
-7. Final report should show `OpenClaw: Running`.
+7. Final report should show `OpenClaw: Installed`.
 
 ## What Must Happen Automatically
 
 - install Node.js and required build tools
 - install `git curl wget sudo nodejs build-essential cmake make g++ python3 ca-certificates`
 - install OpenClaw CLI
-- install/register OpenClaw gateway service
 - enable linger for target user
 - install Homebrew
 - install Google Chrome
@@ -72,6 +71,7 @@ That is okay on `main` because default branch is `main`.
 - no onboarding during setup
 - no channel login during setup
 - no manual API-key flow during setup
+- no OpenClaw gateway service install during setup; onboarding handles that later
 
 Those steps are intended to happen later by hand.
 
@@ -84,9 +84,8 @@ Validated on:
 Observed successful behavior after patched direct run:
 
 - OpenClaw CLI installed
-- `openclaw gateway install` registered user service
-- gateway became active
-- final report showed `OpenClaw: Running`
+- gateway service was previously tested, but setup now intentionally leaves gateway registration to onboarding
+- final report should now show `OpenClaw: Installed`
 - onboarding was not triggered
 
 ## Commits Backing Current Test Expectations
@@ -94,3 +93,4 @@ Observed successful behavior after patched direct run:
 - `e1f30a5` Harden OpenClaw installer handoff in Ubuntu setup flows
 - `971a826` Allow installer shortcuts to target feature branches
 - `46a86f6` Install and verify OpenClaw gateway service
+- current follow-up commit removes pre-onboarding gateway installation again

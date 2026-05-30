@@ -89,14 +89,14 @@ class PostLockdownSetup:
             wrapper = f"su - {quoted_user} -c {quoted_command}"
         return self.run_command(wrapper, check=check, capture_output=capture_output)
 
-    def get_openclaw_service_status(self, username):
+    def get_openclaw_install_status(self, username):
         result = self.run_as_login_user(
             username,
-            "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
-            "systemctl --user is-active openclaw-gateway",
+            "export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+            "command -v openclaw",
             check=False,
         )
-        return result.stdout.strip()
+        return result.returncode == 0
 
     def verify_tailscale_connection(self):
         """Verify we're connected via Tailscale"""
@@ -273,19 +273,13 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
                 f"bash {installer_path} --no-onboard",
                 capture_output=False,
             )
-            self.run_as_login_user(
-                install_user,
-                "export PATH=/home/{user}/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
-                "openclaw gateway install".format(user=install_user),
-                capture_output=False,
-            )
         finally:
             self.run_command(f"rm -f {installer_path}", check=False)
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session
         self.run_command(f"loginctl enable-linger {install_user}")
-        self.log("OpenClaw installed and gateway service registered", "SUCCESS")
+        self.log("OpenClaw installed", "SUCCESS")
 
     def install_homebrew(self):
         """Pre-install Homebrew so OpenClaw skills install correctly during onboarding"""
@@ -493,13 +487,13 @@ section "OpenClaw"
 oc_user=""
 while IFS=: read -r user _ uid _ _ home _; do
     if [ "$uid" -ge 1000 ] && [[ "$home" == /home/* ]] && \
-       runuser -l "$user" -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active --quiet openclaw-gateway' 2>/dev/null; then
+       runuser -l "$user" -c 'export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; command -v openclaw >/dev/null' 2>/dev/null; then
         oc_user="$user"
         break
     fi
 done < /etc/passwd
 if [ -n "$oc_user" ]; then
-    pass "OpenClaw gateway service is running for $oc_user"
+    pass "OpenClaw CLI is installed for $oc_user"
     oc_ports=$(ss -tlnp 2>/dev/null | grep -i openclaw | awk '{print $4}' | sed 's/.*://' | sort -u)
     if [ -n "$oc_ports" ]; then
         for port in $oc_ports; do
@@ -513,7 +507,7 @@ if [ -n "$oc_user" ]; then
         info "OpenClaw does not expose a network port"
     fi
 else
-    warn "OpenClaw gateway service is not running"
+    warn "OpenClaw CLI is not installed"
 fi
 
 # ── Services ──────────────────────────────────────────────────────────────────
@@ -910,10 +904,10 @@ WantedBy=timers.target
         
         install_user = self.get_install_user()
         try:
-            if install_user and self.get_openclaw_service_status(install_user) == "active":
-                openclaw_status = "Running"
+            if install_user and self.get_openclaw_install_status(install_user):
+                openclaw_status = "Installed"
             else:
-                openclaw_status = "Installed (service not active)"
+                openclaw_status = "Installation failed"
         except:
             openclaw_status = "Installation failed"
         

@@ -53,5 +53,6 @@ As of 2026-05-29, active branch:
 
 - The OpenClaw install failure on Proxmox Ubuntu CTs was reproduced and fixed.
 - The fix was validated on real CT `openclaw03`.
+- Setup intentionally installs OpenClaw CLI only; `openclaw onboard` will install/register the gateway service later.
 - The key branch-flow gotcha is that testing `dev` requires passing `dev` to `install.sh`, not just downloading `install.sh` from the `dev` URL.
 - Exact current test command is documented in `TEST-NOTES.md`.

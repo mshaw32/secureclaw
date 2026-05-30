@@ -128,14 +128,14 @@ class LocalUbuntuSetup:
             wrapper = f"su - {quoted_user} -c {quoted_command}"
         return self.run_command(wrapper, check=check, capture_output=capture_output)
 
-    def get_openclaw_service_status(self, username):
+    def get_openclaw_install_status(self, username):
         result = self.run_as_login_user(
             username,
-            "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
-            "systemctl --user is-active openclaw-gateway",
+            "export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+            "command -v openclaw",
             check=False,
         )
-        return result.stdout.strip()
+        return result.returncode == 0
 
     def get_user_input(self, message, options, default_index=0):
         print(f"\n{Colors.CYAN}{message}{Colors.ENDC}")
@@ -688,18 +688,12 @@ only affects incoming network connections.{Colors.ENDC}
                 f"bash {installer_path} --no-onboard",
                 capture_output=False,
             )
-            self.run_as_login_user(
-                self.install_user,
-                "export PATH=/home/{user}/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
-                "openclaw gateway install".format(user=self.install_user),
-                capture_output=False,
-            )
         finally:
             self.run_command(f"rm -f {installer_path}", check=False)
 
         # Enable linger so the user's systemd services survive without an active session
         self.run_command(f"loginctl enable-linger {self.install_user}")
-        self.log("OpenClaw installed and gateway service registered", "SUCCESS")
+        self.log("OpenClaw installed", "SUCCESS")
         self._save_state(openclaw_installed=True)
 
     def install_homebrew(self):
@@ -971,15 +965,15 @@ section "OpenClaw"
 oc_user=""
 while IFS=: read -r user _ uid _ _ home _; do
     if [ "$uid" -ge 1000 ] && [[ "$home" == /home/* ]] && \
-       runuser -l "$user" -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active --quiet openclaw-gateway' 2>/dev/null; then
+       runuser -l "$user" -c 'export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; command -v openclaw >/dev/null' 2>/dev/null; then
         oc_user="$user"
         break
     fi
 done < /etc/passwd
 if [ -n "$oc_user" ]; then
-    pass "OpenClaw gateway service is running for $oc_user"
+    pass "OpenClaw CLI is installed for $oc_user"
 else
-    warn "OpenClaw gateway service is not running"
+    warn "OpenClaw CLI is not installed"
 fi
 
 section "Services"
@@ -1279,10 +1273,10 @@ Categories=System;Security;
             chrome_ver = "Installation failed"
 
         try:
-            if self.install_user and self.get_openclaw_service_status(self.install_user) == "active":
-                oc_status = "Running"
+            if self.install_user and self.get_openclaw_install_status(self.install_user):
+                oc_status = "Installed"
             else:
-                oc_status = "Installed (service not active)"
+                oc_status = "Installation failed"
         except Exception:
             oc_status = "Unknown"
 
