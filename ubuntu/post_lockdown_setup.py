@@ -10,6 +10,8 @@ import sys
 import subprocess
 import time
 import pwd
+import shlex
+import shutil
 from pathlib import Path
 
 # Injected at install time by vps-post-setup shortcut via sed.
@@ -77,6 +79,24 @@ class PostLockdownSetup:
             if capture_output and e.stderr:
                 self.log(f"Error output: {e.stderr.strip()}", "ERROR")
             raise
+
+    def run_as_login_user(self, username, command, check=True, capture_output=True):
+        quoted_user = shlex.quote(username)
+        quoted_command = shlex.quote(command)
+        if shutil.which("runuser"):
+            wrapper = f"runuser -l {quoted_user} -c {quoted_command}"
+        else:
+            wrapper = f"su - {quoted_user} -c {quoted_command}"
+        return self.run_command(wrapper, check=check, capture_output=capture_output)
+
+    def get_openclaw_install_status(self, username):
+        result = self.run_as_login_user(
+            username,
+            "export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+            "command -v openclaw",
+            check=False,
+        )
+        return result.returncode == 0
 
     def verify_tailscale_connection(self):
         """Verify we're connected via Tailscale"""
@@ -230,21 +250,36 @@ Current hostname: {Colors.BOLD}{current}{Colors.ENDC}
         print(f"\n  {Colors.WARNING}{Colors.BOLD}⚠  Note:{Colors.ENDC}{Colors.WARNING} This step can take 2–3 minutes and may appear to hang.{Colors.ENDC}")
         print(f"  {Colors.WARNING}   If progress stops, press Enter a few times to continue.{Colors.ENDC}\n")
         self.run_command("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -")
-        self.run_command("apt-get install -y nodejs build-essential cmake make g++ python3")
-
-        # Run the official OpenClaw installer as the target user.
-        # Node.js is already present so the installer skips the sudo step.
-        self.log("Running official OpenClaw installer...")
         self.run_command(
-            f"su - {install_user} -c "
-            f"'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'",
-            capture_output=False
+            "apt-get install -y "
+            "git curl wget sudo "
+            "nodejs build-essential cmake make g++ python3 "
+            "ca-certificates"
         )
+
+        # Download once as root, then run under the target user's login shell
+        # with an explicit PATH so LXC/container environments don't hide tools.
+        self.log("Running official OpenClaw installer...")
+        installer_path = "/tmp/openclaw_install.sh"
+        self.run_command(f"curl -fsSL https://openclaw.ai/install.sh -o {installer_path}")
+        self.run_command(f"chmod 755 {installer_path}")
+        try:
+            self.run_as_login_user(
+                install_user,
+                "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                "for cmd in git curl sudo node npm bash; do "
+                "command -v \"$cmd\" >/dev/null || { echo \"Missing dependency in user PATH: $cmd\" >&2; exit 1; }; "
+                "done; "
+                f"bash {installer_path} --no-onboard",
+                capture_output=False,
+            )
+        finally:
+            self.run_command(f"rm -f {installer_path}", check=False)
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session
         self.run_command(f"loginctl enable-linger {install_user}")
-        self.log("OpenClaw installed and gateway service registered", "SUCCESS")
+        self.log("OpenClaw installed", "SUCCESS")
 
     def install_homebrew(self):
         """Pre-install Homebrew so OpenClaw skills install correctly during onboarding"""
@@ -449,8 +484,16 @@ fi
 
 # ── OpenClaw ──────────────────────────────────────────────────────────────────
 section "OpenClaw"
-if systemctl is-active --quiet openclaw; then
-    pass "OpenClaw service is running"
+oc_user=""
+while IFS=: read -r user _ uid _ _ home _; do
+    if [ "$uid" -ge 1000 ] && [[ "$home" == /home/* ]] && \
+       runuser -l "$user" -c 'export PATH=/home/$(id -un)/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; command -v openclaw >/dev/null' 2>/dev/null; then
+        oc_user="$user"
+        break
+    fi
+done < /etc/passwd
+if [ -n "$oc_user" ]; then
+    pass "OpenClaw CLI is installed for $oc_user"
     oc_ports=$(ss -tlnp 2>/dev/null | grep -i openclaw | awk '{print $4}' | sed 's/.*://' | sort -u)
     if [ -n "$oc_ports" ]; then
         for port in $oc_ports; do
@@ -464,7 +507,7 @@ if systemctl is-active --quiet openclaw; then
         info "OpenClaw does not expose a network port"
     fi
 else
-    warn "OpenClaw service is not running"; RESTART_SVCS+=("openclaw")
+    warn "OpenClaw CLI is not installed"
 fi
 
 # ── Services ──────────────────────────────────────────────────────────────────
@@ -859,9 +902,12 @@ WantedBy=timers.target
         except:
             chrome_version = "Installation failed"
         
+        install_user = self.get_install_user()
         try:
-            openclaw_result = self.run_command("systemctl is-active openclaw", check=False)
-            openclaw_status = "Running" if openclaw_result.stdout.strip() == "active" else "Installed (service not active)"
+            if install_user and self.get_openclaw_install_status(install_user):
+                openclaw_status = "Installed"
+            else:
+                openclaw_status = "Installation failed"
         except:
             openclaw_status = "Installation failed"
         

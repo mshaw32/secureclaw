@@ -1,7 +1,6 @@
 #!/bin/bash
 # fix_openclaw.sh — Fixes OpenClaw installs that used the legacy system service.
-# Removes the manual openclaw.service, re-installs via the official installer,
-# and enables linger so the user service starts at boot.
+# Removes the manual openclaw.service and re-installs via the official installer.
 #
 # Usage:
 #   sudo bash fix_openclaw.sh
@@ -16,6 +15,15 @@ ok()   { echo -e "  ${GREEN}✓${RESET}  $1"; }
 info() { echo -e "  ${CYAN}ℹ${RESET}  $1"; }
 warn() { echo -e "  ${YELLOW}⚠${RESET}  $1"; }
 die()  { echo -e "  ${RED}${BOLD}✗ Error:${RESET} $1"; exit 1; }
+run_as_login_user() {
+    local username="$1"
+    local command="$2"
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -l "$username" -c "$command"
+    else
+        su - "$username" -c "$command"
+    fi
+}
 
 if [[ $EUID -ne 0 ]]; then
     die "This script must be run as root. Use: sudo bash fix_openclaw.sh"
@@ -62,42 +70,51 @@ else
     ok "No legacy system service found"
 fi
 
-# ── Step 2: Kill any orphaned openclaw-gateway processes ──────────────────────
-info "Cleaning up any stale gateway processes..."
-pkill -u "$TARGET_USER" -f openclaw-gateway 2>/dev/null || true
-sleep 1
-ok "Stale processes cleared"
-
-# ── Step 3: Ensure Node.js is present (installer needs it, can't sudo without TTY) ──
-info "Ensuring Node.js is installed..."
+# ── Step 2: Ensure system deps are present (installer can't sudo without TTY) ──
+info "Ensuring Node.js and installer dependencies are installed..."
 if ! command -v node &>/dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs build-essential cmake make g++ python3
-    ok "Node.js installed"
+    ok "NodeSource repository configured"
 else
     ok "Node.js already present ($(node --version))"
 fi
+apt-get install -y \
+    git curl wget sudo \
+    nodejs build-essential cmake make g++ python3 \
+    ca-certificates
+ok "Installer dependencies verified"
 
-# ── Step 4: Re-install via official installer ─────────────────────────────────
+# ── Step 3: Re-install via official installer ─────────────────────────────────
 info "Running official OpenClaw installer as ${TARGET_USER}..."
 echo
-su - "$TARGET_USER" -c \
-    'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'
+curl -fsSL https://openclaw.ai/install.sh -o /tmp/openclaw_install.sh
+chmod 755 /tmp/openclaw_install.sh
+run_as_login_user "$TARGET_USER" \
+    'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
+    for cmd in git curl sudo node npm bash; do \
+        command -v "$cmd" >/dev/null || { echo "Missing dependency in user PATH: $cmd" >&2; exit 1; }; \
+    done; \
+    bash /tmp/openclaw_install.sh --no-onboard'
+rm -f /tmp/openclaw_install.sh
 echo
 ok "OpenClaw installed"
 
-# ── Step 5: Enable linger ──────────────────────────────────────────────────────
-info "Enabling linger for ${TARGET_USER} (service starts at boot)..."
+# ── Step 4: Enable linger ──────────────────────────────────────────────────────
+info "Enabling linger for ${TARGET_USER}..."
 loginctl enable-linger "$TARGET_USER"
 ok "Linger enabled"
+if run_as_login_user "$TARGET_USER" "export PATH=/home/$TARGET_USER/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; command -v openclaw >/dev/null" 2>/dev/null; then
+    ok "OpenClaw CLI is available"
+else
+    warn "OpenClaw CLI was not found in ${TARGET_USER}'s PATH"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo
 echo -e "  ${CYAN}──────────────────────────────────────────${RESET}"
 echo -e "  ${GREEN}${BOLD}Fix complete!${RESET}"
 echo
-echo -e "  OpenClaw is now managed by its own user service."
-echo -e "  To set up Discord (or any other channel), run as ${TARGET_USER}:"
+echo -e "  To finish OpenClaw onboarding and set up Discord (or any other channel), run as ${TARGET_USER}:"
 echo
 echo -e "    ${YELLOW}openclaw onboard${RESET}"
 echo -e "    ${YELLOW}openclaw channels login --channel discord${RESET}"
