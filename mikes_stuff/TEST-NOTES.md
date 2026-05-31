@@ -122,7 +122,18 @@ Those steps are intended to happen later by hand.
 - Onboarding was cancelled at setup-mode prompt to avoid completing API/channel configuration.
 - Issue found during test:
   - OpenClaw Control Panel widget was fetched from `brandonbelew/secureclaw/dev`
-  - local `dev` has been updated to fetch widget/control-panel code from `mshaw32/secureclaw`
+  - runtime log showed `vps-post-setup` downloading:
+    - `https://raw.githubusercontent.com/brandonbelew/secureclaw/dev/ubuntu/openclaw_widget.py`
+  - hardcoded upstream references were in the widget/control-panel fetch path:
+    - `ubuntu/post_lockdown_setup.py`
+      - `install_openclaw_widget()` used `raw_base` pointing at `brandonbelew/secureclaw`
+    - `ubuntu/local_setup.py`
+      - `install_openclaw_widget()` used `raw_base` pointing at `brandonbelew/secureclaw`
+    - `ubuntu/install_widget.sh`
+      - standalone widget installer examples and `REPO_OWNER` pointed at `brandonbelew`
+    - `ubuntu/openclaw_widget.py`
+      - `REPO_OWNER` pointed at `brandonbelew`, which controlled runtime manifest/update checks
+  - local `dev` has been updated so all of the above fetch widget/control-panel code from `mshaw32/secureclaw`
 
 ### `openclaw05`
 
