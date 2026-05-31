@@ -14,7 +14,7 @@ Validate the current `dev` branch on a brand new Ubuntu CT after the `openclaw05
 - Manual `openclaw onboard` should not show the Codex plugin/module load error:
   - `openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
 
-Important: local `dev` is synced with `origin/dev`; the GitHub-hosted test command should now pull the current test code.
+Important: local `dev` has post-test widget URL fixes and notes updates. Push `dev` before the next GitHub-hosted test command.
 
 ## Critical Branch Rule
 
@@ -94,6 +94,35 @@ That is okay on `main` because default branch is `main`.
 Those steps are intended to happen later by hand.
 
 ## Real CT Validation Already Completed
+
+### `openclaw03` Fresh `dev` Flow Retest, 2026-05-31
+
+- Ran GitHub-hosted `dev` flow on CT `openclaw03` at `10.0.0.101`.
+- RDP user created:
+  - username: `openclaw`
+  - password: recorded out-of-band by user request
+- Tailscale authenticated successfully.
+- Tailscale IP:
+  - `100.71.218.112`
+- SSH over Tailscale confirmed:
+  - `ssh root@100.71.218.112`
+- RDP port over Tailscale confirmed:
+  - `100.71.218.112:3389`
+- Ran `sudo vps-post-setup` over Tailscale SSH.
+- Final report showed:
+  - `OpenClaw: Installed`
+  - `Google Chrome 148.0.7778.215`
+- OpenClaw CLI check:
+  - path: `/home/openclaw/.npm-global/bin/openclaw`
+  - version: `OpenClaw 2026.5.28 (e932160)`
+  - Node: `v22.22.2`
+  - npm: `10.9.7`
+- `openclaw-gateway` was inactive before onboarding, as intended.
+- Manual `openclaw onboard` reached the setup-mode prompt without the `openclaw05` Codex plugin/module load error.
+- Onboarding was cancelled at setup-mode prompt to avoid completing API/channel configuration.
+- Issue found during test:
+  - OpenClaw Control Panel widget was fetched from `brandonbelew/secureclaw/dev`
+  - local `dev` has been updated to fetch widget/control-panel code from `mshaw32/secureclaw`
 
 ### `openclaw05`
 

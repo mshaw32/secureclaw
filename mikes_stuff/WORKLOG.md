@@ -6,21 +6,62 @@ This file is organized newest first so future sessions can get current state qui
 
 - Active branch: `dev`
 - Branch status after latest local commit:
-  - `dev` is synced with `origin/dev`
-  - ready for the next fresh CT test
+  - `dev` has local post-test fixes/notes to push
 - Latest local commits on `dev`:
   - `2266247` Defer OpenClaw gateway setup to onboarding
   - `410fc85` Restore streamed OpenClaw installer invocation
   - `cee4f29` Document CT install and onboarding findings
+  - `0176702` Update notes after dev push
 - Current expected fresh CT final report:
   - `OpenClaw: Installed`
 - Setup currently installs prerequisites, OpenClaw CLI, Homebrew, Chrome, and desktop tooling.
 - Setup intentionally does not run onboarding, channel login, manual API-key flow, or pre-onboarding gateway service installation.
 - OpenClaw gateway service setup is deferred to `openclaw onboard`.
 - Remaining next major validation:
-  - test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
-  - after setup, run `openclaw onboard` and confirm the Codex plugin/module error does not recur
+  - push current `dev`
+  - retest if desired to confirm widget fetches from `mshaw32/secureclaw`
   - if validation passes, merge `dev` back into fork `main` and push only to `origin`
+
+## 2026-05-31
+
+### Fresh Dev Flow Test On `openclaw03`
+
+- Ran GitHub-hosted `dev` installer on CT `openclaw03` / `10.0.0.101`.
+- Created RDP user `openclaw` with the requested password.
+- Tailscale auth completed successfully.
+- Tailscale IP assigned:
+  - `100.71.218.112`
+- Confirmed SSH over Tailscale:
+  - `ssh root@100.71.218.112`
+- Confirmed RDP port reachable over Tailscale:
+  - `100.71.218.112:3389`
+- Ran `sudo vps-post-setup` over Tailscale SSH.
+- Final setup report showed:
+  - `OpenClaw: Installed`
+  - `Google Chrome 148.0.7778.215`
+- OpenClaw installed via restored streamed installer path:
+  - `curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard`
+- Verified OpenClaw runtime:
+  - `/home/openclaw/.npm-global/bin/openclaw`
+  - `OpenClaw 2026.5.28 (e932160)`
+  - Node `v22.22.2`
+  - npm `10.9.7`
+- Confirmed `openclaw-gateway` remained inactive before onboarding, as intended.
+- Ran `openclaw onboard` manually as `openclaw`.
+- Onboarding reached setup-mode prompt without the `openclaw05` Codex plugin/module error.
+- Cancelled onboarding at setup-mode prompt to avoid completing API/channel configuration.
+
+### Widget Source URL Issue Found
+
+- During `vps-post-setup`, OpenClaw Control Panel downloaded from:
+  - `https://raw.githubusercontent.com/brandonbelew/secureclaw/dev/ubuntu/openclaw_widget.py`
+- This violated the fork test expectation that all install flow code should come from `mshaw32/secureclaw`.
+- Updated local `dev` to use `mshaw32/secureclaw` for:
+  - `ubuntu/post_lockdown_setup.py`
+  - `ubuntu/local_setup.py`
+  - `ubuntu/install_widget.sh`
+  - `ubuntu/openclaw_widget.py`
+- Needs push before another GitHub-hosted `dev` retest.
 
 ## 2026-05-30
 

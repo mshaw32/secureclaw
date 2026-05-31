@@ -61,7 +61,10 @@ As of 2026-05-30, active branch:
   - install dependencies as root
   - run `curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard` as the target user via `su -`
   - keep explicit `PATH` and dependency checks
+- On 2026-05-31, `openclaw03` was deployed from GitHub-hosted `dev` and post-setup completed successfully.
+- Manual `openclaw onboard` on `openclaw03` reached the setup-mode prompt without the `openclaw05` Codex plugin/module error.
+- That test also found the widget installer still fetched from `brandonbelew/secureclaw`; current local `dev` changes update widget URLs to the fork `mshaw32/secureclaw`.
 - The key branch-flow gotcha is that testing `dev` requires passing `dev` to `install.sh`, not just downloading `install.sh` from the `dev` URL.
 - Exact current test command is documented in `TEST-NOTES.md`.
 - Current branch state:
-  - local `dev` is synced with `origin/dev` and ready for the next fresh CT test.
+  - local `dev` has post-test fixes/notes and must be pushed before another GitHub-hosted `dev` test.

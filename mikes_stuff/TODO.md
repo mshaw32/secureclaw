@@ -2,6 +2,7 @@
 
 ## High Priority
 
+- Push local `dev` after the post-test widget URL fix and notes update.
 - Run a fresh end-to-end deployment test on a brand new Ubuntu CT using the GitHub `dev` branch flow.
 - Confirm that `install.sh`, `vps-setup`, and `vps-post-setup` all pull the expected updated code from GitHub.
 - Verify final report on fresh CT shows `OpenClaw: Installed`.
@@ -9,6 +10,7 @@
 - After setup completes, manually run `openclaw onboard` as the target user.
 - Confirm the `openclaw05` Codex plugin/module error does not recur:
   - `openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
+- Confirm widget/control-panel install now fetches from `mshaw32/secureclaw`, not `brandonbelew/secureclaw`.
 
 ## Deployment Follow-Up
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # install_widget.sh — Standalone OpenClaw Control Panel installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/brandonbelew/secureclaw/main/ubuntu/install_widget.sh | sudo bash
-#   curl -fsSL https://raw.githubusercontent.com/brandonbelew/secureclaw/dev/ubuntu/install_widget.sh  | sudo bash -s -- dev
+#   curl -fsSL https://raw.githubusercontent.com/mshaw32/secureclaw/main/ubuntu/install_widget.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/mshaw32/secureclaw/dev/ubuntu/install_widget.sh  | sudo bash -s -- dev
 
 set -euo pipefail
 
-REPO_OWNER="brandonbelew"
+REPO_OWNER="mshaw32"
 REPO_NAME="secureclaw"
 INSTALL_BIN="/usr/local/bin/openclaw-widget"
 DESKTOP_DIR="/usr/local/share/applications"

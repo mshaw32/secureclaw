@@ -53,7 +53,7 @@ LOGO_B64 = (
     "JYZvVlkZUOI6kfDq/xDwi4L/AKG5ITVmS9opAAAAAElFTkSuQmCC"
 )
 
-REPO_OWNER = "brandonbelew"
+REPO_OWNER = "mshaw32"
 REPO_NAME = "secureclaw"
 DEFAULT_PORT = 18789
 REPO_BRANCH_OVERRIDE = None  # injected at install time by install_widget.sh

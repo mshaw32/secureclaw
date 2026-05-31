@@ -1123,7 +1123,7 @@ Categories=System;Security;
         branch = self._get_repo_branch()
         self.log(f"Using branch: {branch}")
 
-        raw_base = f"https://raw.githubusercontent.com/brandonbelew/secureclaw/{branch}"
+        raw_base = f"https://raw.githubusercontent.com/mshaw32/secureclaw/{branch}"
         install_bin = "/usr/local/bin/openclaw-widget"
 
         self.run_command(f"wget -q -O {install_bin} {raw_base}/ubuntu/openclaw_widget.py")

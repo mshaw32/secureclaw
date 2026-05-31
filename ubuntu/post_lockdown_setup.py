@@ -734,7 +734,7 @@ WantedBy=timers.target
         branch = self._get_repo_branch()
         self.log(f"Using branch: {branch}")
 
-        raw_base = f"https://raw.githubusercontent.com/brandonbelew/secureclaw/{branch}"
+        raw_base = f"https://raw.githubusercontent.com/mshaw32/secureclaw/{branch}"
         widget_url = f"{raw_base}/ubuntu/openclaw_widget.py"
         install_bin = "/usr/local/bin/openclaw-widget"
 
