@@ -64,4 +64,4 @@ As of 2026-05-30, active branch:
 - The key branch-flow gotcha is that testing `dev` requires passing `dev` to `install.sh`, not just downloading `install.sh` from the `dev` URL.
 - Exact current test command is documented in `TEST-NOTES.md`.
 - Current branch state:
-  - local `dev` is ahead of `origin/dev` by 2 commits and must be pushed before the next fresh CT test.
+  - local `dev` is synced with `origin/dev` and ready for the next fresh CT test.

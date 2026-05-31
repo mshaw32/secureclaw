@@ -2,7 +2,6 @@
 
 ## High Priority
 
-- Push local `dev` to `origin/dev` before the next CT test.
 - Run a fresh end-to-end deployment test on a brand new Ubuntu CT using the GitHub `dev` branch flow.
 - Confirm that `install.sh`, `vps-setup`, and `vps-post-setup` all pull the expected updated code from GitHub.
 - Verify final report on fresh CT shows `OpenClaw: Installed`.

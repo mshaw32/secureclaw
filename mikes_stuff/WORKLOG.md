@@ -6,18 +6,19 @@ This file is organized newest first so future sessions can get current state qui
 
 - Active branch: `dev`
 - Branch status after latest local commit:
-  - `dev` is ahead of `origin/dev` by 2 commits
-  - push `dev` before the next fresh CT test
+  - `dev` is synced with `origin/dev`
+  - ready for the next fresh CT test
 - Latest local commits on `dev`:
   - `2266247` Defer OpenClaw gateway setup to onboarding
   - `410fc85` Restore streamed OpenClaw installer invocation
+  - `cee4f29` Document CT install and onboarding findings
 - Current expected fresh CT final report:
   - `OpenClaw: Installed`
 - Setup currently installs prerequisites, OpenClaw CLI, Homebrew, Chrome, and desktop tooling.
 - Setup intentionally does not run onboarding, channel login, manual API-key flow, or pre-onboarding gateway service installation.
 - OpenClaw gateway service setup is deferred to `openclaw onboard`.
 - Remaining next major validation:
-  - push `dev`, then test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
+  - test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
   - after setup, run `openclaw onboard` and confirm the Codex plugin/module error does not recur
   - if validation passes, merge `dev` back into fork `main` and push only to `origin`
 

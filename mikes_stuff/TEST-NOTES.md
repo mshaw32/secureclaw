@@ -14,7 +14,7 @@ Validate the current `dev` branch on a brand new Ubuntu CT after the `openclaw05
 - Manual `openclaw onboard` should not show the Codex plugin/module load error:
   - `openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
 
-Important: local `dev` is currently ahead of `origin/dev` by 2 commits. Push `dev` before using the GitHub-hosted test command.
+Important: local `dev` is synced with `origin/dev`; the GitHub-hosted test command should now pull the current test code.
 
 ## Critical Branch Rule
 
@@ -120,3 +120,4 @@ Observed successful behavior after patched direct run before the gateway rollbac
 - `46a86f6` Install and verify OpenClaw gateway service
 - `2266247` Defer OpenClaw gateway setup to onboarding
 - `410fc85` Restore streamed OpenClaw installer invocation
+- `cee4f29` Document CT install and onboarding findings
