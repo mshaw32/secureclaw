@@ -45,7 +45,7 @@ Before opening an upstream PR:
 
 ## Current Working Branch
 
-As of 2026-05-29, active branch:
+As of 2026-05-30, active branch:
 
 `dev`
 
@@ -54,5 +54,14 @@ As of 2026-05-29, active branch:
 - The OpenClaw install failure on Proxmox Ubuntu CTs was reproduced and fixed.
 - The fix was validated on real CT `openclaw03`.
 - Setup intentionally installs OpenClaw CLI only; `openclaw onboard` will install/register the gateway service later.
+- A later fresh CT test on `openclaw05` deployed successfully from fork `main`, but `openclaw onboard` failed with a Codex plugin/module error:
+  - `Cannot find module ...openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
+- Suspected cause was our temporary installer wrapper that downloaded `https://openclaw.ai/install.sh` as root to `/tmp/openclaw_install.sh` and ran that local script via `runuser -l`.
+- Current `dev` now restores the upstream-style streamed OpenClaw installer invocation while keeping CT prerequisite hardening:
+  - install dependencies as root
+  - run `curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard` as the target user via `su -`
+  - keep explicit `PATH` and dependency checks
 - The key branch-flow gotcha is that testing `dev` requires passing `dev` to `install.sh`, not just downloading `install.sh` from the `dev` URL.
 - Exact current test command is documented in `TEST-NOTES.md`.
+- Current branch state:
+  - local `dev` is ahead of `origin/dev` by 2 commits and must be pushed before the next fresh CT test.

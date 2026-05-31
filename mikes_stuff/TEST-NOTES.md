@@ -4,6 +4,18 @@
 
 This file captures the exact commands and expectations for testing the updated SecureClaw install flow.
 
+## Current Test Objective
+
+Validate the current `dev` branch on a brand new Ubuntu CT after the `openclaw05` finding:
+
+- SecureClaw deployment should complete successfully.
+- Final report should show `OpenClaw: Installed`.
+- Setup should not run onboarding automatically.
+- Manual `openclaw onboard` should not show the Codex plugin/module load error:
+  - `openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
+
+Important: local `dev` is currently ahead of `origin/dev` by 2 commits. Push `dev` before using the GitHub-hosted test command.
+
 ## Critical Branch Rule
 
 If testing `dev`, it is not enough to download `install.sh` from the `dev` URL.
@@ -63,6 +75,9 @@ That is okay on `main` because default branch is `main`.
 - install Node.js and required build tools
 - install `git curl wget sudo nodejs build-essential cmake make g++ python3 ca-certificates`
 - install OpenClaw CLI
+- run the official OpenClaw installer using the streamed upstream-style command as the target user:
+  - `curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard`
+- keep explicit `PATH` and dependency checks so CT login shells can see installed tools
 - enable linger for target user
 - install Homebrew
 - install Google Chrome
@@ -74,6 +89,7 @@ That is okay on `main` because default branch is `main`.
 - no channel login during setup
 - no manual API-key flow during setup
 - no OpenClaw gateway service install during setup; onboarding handles that later
+- no root-downloaded `/tmp/openclaw_install.sh` wrapper for the OpenClaw installer
 
 Those steps are intended to happen later by hand.
 
@@ -88,11 +104,9 @@ Those steps are intended to happen later by hand.
   - our local-script `/tmp/openclaw_install.sh` installer wrapper diverged from upstream's streamed `curl | bash` installer path.
 - Current `dev` test should verify the restored streamed installer path fixes this.
 
-Validated on:
+### `openclaw03`
 
-- `openclaw03`
-
-Observed successful behavior after patched direct run:
+Observed successful behavior after patched direct run before the gateway rollback:
 
 - OpenClaw CLI installed
 - gateway service was previously tested, but setup now intentionally leaves gateway registration to onboarding
@@ -104,4 +118,5 @@ Observed successful behavior after patched direct run:
 - `e1f30a5` Harden OpenClaw installer handoff in Ubuntu setup flows
 - `971a826` Allow installer shortcuts to target feature branches
 - `46a86f6` Install and verify OpenClaw gateway service
-- current follow-up commit removes pre-onboarding gateway installation again
+- `2266247` Defer OpenClaw gateway setup to onboarding
+- `410fc85` Restore streamed OpenClaw installer invocation

@@ -6,7 +6,11 @@ This file is organized newest first so future sessions can get current state qui
 
 - Active branch: `dev`
 - Branch status after latest local commit:
-  - `dev` has local changes for the next CT test
+  - `dev` is ahead of `origin/dev` by 2 commits
+  - push `dev` before the next fresh CT test
+- Latest local commits on `dev`:
+  - `2266247` Defer OpenClaw gateway setup to onboarding
+  - `410fc85` Restore streamed OpenClaw installer invocation
 - Current expected fresh CT final report:
   - `OpenClaw: Installed`
 - Setup currently installs prerequisites, OpenClaw CLI, Homebrew, Chrome, and desktop tooling.
@@ -15,6 +19,7 @@ This file is organized newest first so future sessions can get current state qui
 - Remaining next major validation:
   - push `dev`, then test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
   - after setup, run `openclaw onboard` and confirm the Codex plugin/module error does not recur
+  - if validation passes, merge `dev` back into fork `main` and push only to `origin`
 
 ## 2026-05-30
 
@@ -37,6 +42,8 @@ This file is organized newest first so future sessions can get current state qui
   - `ubuntu/local_setup.py`
   - `ubuntu/fix_openclaw.sh`
 - Needs validation on a brand new CT from GitHub-hosted `dev`.
+- Commit created:
+  - `410fc85` Restore streamed OpenClaw installer invocation
 
 ### Gateway Install Rollback
 
@@ -51,7 +58,7 @@ This file is organized newest first so future sessions can get current state qui
 - Updated final reports and security checks to verify OpenClaw CLI installation instead of expecting `openclaw-gateway` to be active.
 - Onboarding remains manual and should later create the gateway service.
 - Commit created:
-  - `Defer OpenClaw gateway setup to onboarding`
+  - `2266247` Defer OpenClaw gateway setup to onboarding
 
 ## 2026-05-29
 
