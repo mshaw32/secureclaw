@@ -6,16 +6,37 @@ This file is organized newest first so future sessions can get current state qui
 
 - Active branch: `dev`
 - Branch status after latest local commit:
-  - `dev` is ahead of `origin/dev` by 1 commit
+  - `dev` has local changes for the next CT test
 - Current expected fresh CT final report:
   - `OpenClaw: Installed`
 - Setup currently installs prerequisites, OpenClaw CLI, Homebrew, Chrome, and desktop tooling.
 - Setup intentionally does not run onboarding, channel login, manual API-key flow, or pre-onboarding gateway service installation.
 - OpenClaw gateway service setup is deferred to `openclaw onboard`.
 - Remaining next major validation:
-  - test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
+  - push `dev`, then test on a fresh Ubuntu CT using GitHub-hosted `dev` flow end to end
+  - after setup, run `openclaw onboard` and confirm the Codex plugin/module error does not recur
 
 ## 2026-05-30
+
+### Restore Upstream-Style OpenClaw Installer Invocation
+
+- Fresh CT `openclaw05` deployed successfully from fork `main`, but `openclaw onboard` showed:
+  - `[plugins] codex failed to load`
+  - `Cannot find module ...openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
+- Since upstream did not have this onboarding failure, suspected regression is our changed installer wrapper:
+  - root downloaded `https://openclaw.ai/install.sh` to `/tmp/openclaw_install.sh`
+  - setup then ran that local script via `runuser -l`
+- Changed setup back toward upstream behavior:
+  - install CT prerequisites as root first
+  - run the official streamed installer as the target user via `su -`
+  - keep explicit `PATH` and dependency visibility checks for CT reliability
+  - still pass `--no-onboard`
+- Updated files:
+  - `ubuntu/post_lockdown_setup.py`
+  - `ubuntu/universal_vps_setup.py`
+  - `ubuntu/local_setup.py`
+  - `ubuntu/fix_openclaw.sh`
+- Needs validation on a brand new CT from GitHub-hosted `dev`.
 
 ### Gateway Install Rollback
 

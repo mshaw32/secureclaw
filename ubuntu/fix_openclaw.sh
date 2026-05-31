@@ -87,15 +87,12 @@ ok "Installer dependencies verified"
 # ── Step 3: Re-install via official installer ─────────────────────────────────
 info "Running official OpenClaw installer as ${TARGET_USER}..."
 echo
-curl -fsSL https://openclaw.ai/install.sh -o /tmp/openclaw_install.sh
-chmod 755 /tmp/openclaw_install.sh
-run_as_login_user "$TARGET_USER" \
+su - "$TARGET_USER" -c \
     'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
     for cmd in git curl sudo node npm bash; do \
         command -v "$cmd" >/dev/null || { echo "Missing dependency in user PATH: $cmd" >&2; exit 1; }; \
     done; \
-    bash /tmp/openclaw_install.sh --no-onboard'
-rm -f /tmp/openclaw_install.sh
+    curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard'
 echo
 ok "OpenClaw installed"
 

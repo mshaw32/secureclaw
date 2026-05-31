@@ -1287,24 +1287,20 @@ TAILSCALE TROUBLESHOOTING:
             "ca-certificates"
         )
 
-        # Download once as root, then run under the target user's login shell
-        # with an explicit PATH so LXC/container environments don't hide tools.
+        # Keep the official streamed installer path, but set PATH explicitly so
+        # LXC/container login shells can see root-installed prerequisites.
         self.log("Running official OpenClaw installer...")
-        installer_path = "/tmp/openclaw_install.sh"
-        self.run_command(f"curl -fsSL https://openclaw.ai/install.sh -o {installer_path}")
-        self.run_command(f"chmod 755 {installer_path}")
-        try:
-            self.run_as_login_user(
-                install_user,
-                "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
-                "for cmd in git curl sudo node npm bash; do "
-                "command -v \"$cmd\" >/dev/null || { echo \"Missing dependency in user PATH: $cmd\" >&2; exit 1; }; "
-                "done; "
-                f"bash {installer_path} --no-onboard",
-                capture_output=False,
-            )
-        finally:
-            self.run_command(f"rm -f {installer_path}", check=False)
+        install_command = (
+            "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+            "for cmd in git curl sudo node npm bash; do "
+            "command -v \"$cmd\" >/dev/null || { echo \"Missing dependency in user PATH: $cmd\" >&2; exit 1; }; "
+            "done; "
+            "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard"
+        )
+        self.run_command(
+            f"su - {shlex.quote(install_user)} -c {shlex.quote(install_command)}",
+            capture_output=False,
+        )
 
         # Enable linger so the user's systemd services start at boot
         # without requiring an active login session

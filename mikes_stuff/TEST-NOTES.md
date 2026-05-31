@@ -55,6 +55,8 @@ That is okay on `main` because default branch is `main`.
 5. At hostname prompt, pressing Enter should keep current hostname.
 6. Script should complete OpenClaw install without onboarding.
 7. Final report should show `OpenClaw: Installed`.
+8. Log in as the target user and run `openclaw onboard`.
+9. Confirm onboarding does not show the Codex plugin/module load error seen on `openclaw05`.
 
 ## What Must Happen Automatically
 
@@ -76,6 +78,15 @@ That is okay on `main` because default branch is `main`.
 Those steps are intended to happen later by hand.
 
 ## Real CT Validation Already Completed
+
+### `openclaw05`
+
+- Fork `main` deployment completed successfully.
+- `openclaw onboard` then failed to load Codex plugin with missing OpenClaw SDK module:
+  - `openclaw/dist/plugin-sdk/root-alias.cjs/exec-approvals-runtime`
+- Suspected cause:
+  - our local-script `/tmp/openclaw_install.sh` installer wrapper diverged from upstream's streamed `curl | bash` installer path.
+- Current `dev` test should verify the restored streamed installer path fixes this.
 
 Validated on:
 
